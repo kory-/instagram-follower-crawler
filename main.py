@@ -11,9 +11,15 @@ from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
 from csv import DictWriter
 import os
 from dotenv import load_dotenv
+import argparse
 import chromedriver_binary
 
 load_dotenv()
+parser = argparse.ArgumentParser()
+
+parser.add_argument("account_id")
+parser.add_argument("-dh", "--disable_headless", action='store_true')
+args = parser.parse_args()
 
 USER_ID = os.getenv('USER_ID')
 PASSWORD = os.getenv('PASSWORD')
@@ -36,8 +42,8 @@ def set_logger(name=None):
 class InstagramCrawler:
     INSTAGRAM_BASE_URL = "https://www.instagram.com/"
 
-    def __init__(self):
-        self.driver = self.get_driver()
+    def __init__(self, headless):
+        self.driver = self.get_driver(headless)
 
     def login(self, id, password):
         logger.info(f"crawler account login start")
@@ -73,11 +79,12 @@ class InstagramCrawler:
         url = self.INSTAGRAM_BASE_URL + account_id
         self.driver.get(url)
 
-    def get_driver(self):
+    def get_driver(self, headless):
         capabilities = DesiredCapabilities.CHROME
         capabilities['goog:loggingPrefs'] = {'performance': 'ALL'}
         options = webdriver.ChromeOptions()
-        options.add_argument('--headless')
+        if headless:
+            options.add_argument('--headless')
         options.add_argument("--disable-gpu")
         options.add_argument("--window-size=1980x1030")
         options.add_argument("--disable-dev-shm-usage")
@@ -159,18 +166,13 @@ if __name__ == "__main__":
     logger = logging.getLogger()
     logger.setLevel(logging.INFO)
 
-    args = sys.argv
-
     try:
-
-        if 2 <= len(args):
-            account_id = args[1]
-        else:
-            raise Exception("account_id arg is required")
+        account_id = args.account_id
+        headless = False if args.disable_headless else True
 
         logger.info(f"{account_id} 's follower crawl")
 
-        ic = InstagramCrawler()
+        ic = InstagramCrawler(headless=headless)
         ic.login(USER_ID, PASSWORD)
         ic.follower_user(account_id)
         ic.driver_quit()
