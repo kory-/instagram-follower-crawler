@@ -50,8 +50,6 @@ class InstagramCrawler:
         login_url = self.INSTAGRAM_BASE_URL + ''
         self.driver.get(login_url)
 
-        time.sleep(10)
-
         input_id = WebDriverWait(self.driver, timeout=30).until(lambda d: d.find_element(by=By.NAME, value="username"))
         input_pw = WebDriverWait(self.driver, timeout=30).until(lambda d: d.find_element(by=By.NAME, value="password"))
 
@@ -116,6 +114,8 @@ class InstagramCrawler:
         headersCSV = ["pk", "username", "full_name", "is_private", "profile_pic_url", "profile_pic_id", "is_verified",
                       "has_anonymous_profile_picture", "has_highlight_reels", "account_badges", "latest_reel_media"]
         with open(fr'instagram_influencer_follower_{account_id}_{int(time.time())}.csv', 'a', newline='') as f:
+            writer = DictWriter(f, fieldnames=headersCSV)
+            writer.writeheader()
 
             scroll, last_ht, ht = 0, 0, 1
             while last_ht != ht:
@@ -151,8 +151,7 @@ class InstagramCrawler:
                     users = responce_json['users'] if 'users' in responce_json else []
                     for user in users:
                         print(user)
-                        dictwriter_object = DictWriter(f, fieldnames=headersCSV)
-                        dictwriter_object.writerow(user)
+                        writer.writerow(user)
 
                 scroll += 1
                 print(last_ht, ht)
