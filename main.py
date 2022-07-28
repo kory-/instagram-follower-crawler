@@ -13,13 +13,17 @@ import os
 from dotenv import load_dotenv
 import argparse
 import chromedriver_binary
+import requests
 
 load_dotenv()
 parser = argparse.ArgumentParser()
 
 parser.add_argument("account_id")
 parser.add_argument("-dh", "--disable_headless", action='store_true')
-parser.add_argument("-i", "--interval", type=int)
+parser.add_argument("-i", "--interval", type=int, default=5)
+parser.add_argument("-f", "--file")
+parser.add_argument("-m", "--max_id")
+parser.add_argument("-l", "--limit", type=int, default=100)
 args = parser.parse_args()
 
 USER_ID = os.getenv('USER_ID')
@@ -100,7 +104,7 @@ class InstagramCrawler:
         time.sleep(1)
         self.driver.quit()
 
-    def follower_user(self, account_id, interval=5):
+    def get_followers_by_scroll(self, account_id, interval=5):
         logger.info(f"{account_id} 's follower crawl start")
         self.get_user(account_id)
 
@@ -113,9 +117,10 @@ class InstagramCrawler:
         scroll_box = self.driver.find_element(By.XPATH, "//div[@role='dialog']//ul/parent::div")
 
         headersCSV = ["pk", "username", "full_name", "is_private", "profile_pic_url", "profile_pic_id", "is_verified",
-                      "has_anonymous_profile_picture", "has_highlight_reels", "account_badges", "latest_reel_media"]
+                      "has_anonymous_profile_picture", "has_highlight_reels", "account_badges", "similar_user_id",
+                      "latest_reel_media"]
         with open(fr'instagram_influencer_follower_{account_id}_{int(time.time())}.csv', 'a', newline='') as f:
-            writer = DictWriter(f, fieldnames=headersCSV)
+            writer = DictWriter(f, fieldnames=headersCSV, extrasaction='ignore')
             writer.writeheader()
 
             retry, scroll, last_ht, ht = 0, 0, 0, 1
@@ -143,6 +148,7 @@ class InstagramCrawler:
                     request_id = log["params"]["requestId"]
                     resp_url = log["params"]["response"]["url"]
                     logger.info(f"query url {resp_url}")
+
                     try:
                         response_body = self.driver.execute_cdp_cmd("Network.getResponseBody",
                                                                     {"requestId": request_id})
@@ -167,6 +173,96 @@ class InstagramCrawler:
         f.close()
         logger.info(f"{account_id} 's follower crawl end")
 
+    def get_followers_by_api(self, account_id, interval=5, limit=100, max_id=None, filename=None):
+        resp_url = ''
+        logger.info(f"{account_id} 's follower crawl start")
+        cookies = {
+            cookie['name']: cookie['value']
+            for cookie in self.driver.get_cookies()
+        }
+
+        self.get_user(account_id)
+
+        follower_button = WebDriverWait(self.driver, timeout=30).until(
+            lambda d: d.find_element(by=By.XPATH, value="//a[contains(@href, '/followers')]"))
+        follower_button.click()
+        time.sleep(3)
+
+        logs_raw = self.driver.get_log("performance")
+        logs = [json.loads(lr["message"])["message"] for lr in logs_raw]
+
+        def log_filter(log_):
+            pattern = r"https?://i.instagram.com/api/v1/friendships/[\d]+/followers/"
+            return (
+                    log_["method"] == "Network.responseReceived"
+                    and "json" in log_["params"]["response"]["mimeType"]
+                    and len(re.findall(pattern, log_["params"]["response"]["url"])) > 0
+            )
+
+        for log in filter(log_filter, logs):
+            request_id = log["params"]["requestId"]
+            logger.info(request_id)
+            resp_url = log["params"]["response"]["url"]
+            logger.info(f"query url {resp_url}")
+
+            try:
+                response_body = self.driver.execute_cdp_cmd("Network.getResponseBody",
+                                                            {"requestId": request_id})
+            except Exception as e:
+                continue
+
+            response_json = json.loads(response_body['body'])
+
+        time.sleep(interval)
+
+        next_max_id = response_json['next_max_id'] if 'next_max_id' in response_json else None
+
+        headersCSV = ["pk", "username", "full_name", "is_private", "profile_pic_url", "profile_pic_id", "is_verified",
+                      "has_anonymous_profile_picture", "has_highlight_reels", "account_badges", "similar_user_id",
+                      "latest_reel_media"]
+
+        pattern = r"https?://i.instagram.com/api/v1/friendships/([\d]+)/followers/"
+        pk = re.findall(pattern, resp_url)[0]
+        logger.info(f"crawl target id: {pk}")
+
+        if not filename:
+            filename = fr'instagram_influencer_follower_{account_id}_{int(time.time())}.csv'
+
+        with open(filename, 'a', newline='') as f:
+            writer = DictWriter(f, fieldnames=headersCSV, extrasaction='ignore')
+            if not max_id:
+                writer.writeheader()
+
+                users = response_json['users'] if 'users' in response_json else []
+                for user in users:
+                    logger.info(f"id: {user['pk']} name: {user['username']}")
+                    writer.writerow(user)
+            else:
+                next_max_id = max_id
+
+            while next_max_id is not None:
+                url = f'https://i.instagram.com/api/v1/friendships/{pk}/followers/?count={limit}&search_surface=follow_list_page&max_id={next_max_id}'
+                print(url)
+                response = requests.get(
+                    url,
+                    headers={
+                        'x-ig-app-id': '936619743392459',
+                        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.5060.134 Safari/537.36'},
+                    cookies=cookies)
+
+                response_json = response.json()
+                users = response_json['users'] if 'users' in response_json else []
+                for user in users:
+                    logger.info(f"id: {user['pk']} name: {user['username']}")
+                    writer.writerow(user)
+
+                next_max_id = response_json['next_max_id'] if 'next_max_id' in response_json else None
+                logger.info(f"next_max_id: {next_max_id}")
+                time.sleep(interval)
+
+        f.close()
+        logger.info(f"{account_id} 's follower crawl end")
+
 
 if __name__ == "__main__":
 
@@ -177,13 +273,18 @@ if __name__ == "__main__":
     try:
         account_id = args.account_id
         interval = args.interval
+        max_id = args.max_id
+        limit = args.limit
+        file = args.file
         headless = False if args.disable_headless else True
 
         logger.info(f"{account_id} 's follower crawl")
 
         ic = InstagramCrawler(headless=headless)
+
         ic.login(USER_ID, PASSWORD)
-        ic.follower_user(account_id, interval)
+        ic.get_followers_by_api(account_id, interval=interval, limit=limit, max_id=max_id, filename=file)
+        # ic.get_followers_by_scroll(account_id, interval)
         ic.driver_quit()
 
     except Exception as e:
