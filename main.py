@@ -19,6 +19,7 @@ parser = argparse.ArgumentParser()
 
 parser.add_argument("account_id")
 parser.add_argument("-dh", "--disable_headless", action='store_true')
+parser.add_argument("-i", "--interval", type=int)
 args = parser.parse_args()
 
 USER_ID = os.getenv('USER_ID')
@@ -99,7 +100,7 @@ class InstagramCrawler:
         time.sleep(1)
         self.driver.quit()
 
-    def follower_user(self, account_id):
+    def follower_user(self, account_id, interval=5):
         logger.info(f"{account_id} 's follower crawl start")
         self.get_user(account_id)
 
@@ -117,14 +118,15 @@ class InstagramCrawler:
             writer = DictWriter(f, fieldnames=headersCSV)
             writer.writeheader()
 
-            scroll, last_ht, ht = 0, 0, 1
-            while last_ht != ht:
+            retry, scroll, last_ht, ht = 0, 0, 0, 1
+            while retry != 5:
                 logger.info(f"page {scroll}")
                 last_ht = ht
                 ht = self.driver.execute_script(""" 
                             arguments[0].scrollTo(0, arguments[0].scrollHeight);
                             return arguments[0].scrollHeight; """, scroll_box)
-                time.sleep(3)
+
+                time.sleep(interval)
 
                 logs_raw = self.driver.get_log("performance")
                 logs = [json.loads(lr["message"])["message"] for lr in logs_raw]
@@ -139,22 +141,29 @@ class InstagramCrawler:
 
                 for log in filter(log_filter, logs):
                     request_id = log["params"]["requestId"]
-                    # resp_url = log["params"]["response"]["url"]
+                    resp_url = log["params"]["response"]["url"]
+                    logger.info(f"query url {resp_url}")
                     try:
                         response_body = self.driver.execute_cdp_cmd("Network.getResponseBody",
                                                                     {"requestId": request_id})
                     except Exception as e:
                         continue
 
-                    responce_json = json.loads(response_body['body'])
+                    response_json = json.loads(response_body['body'])
 
-                    users = responce_json['users'] if 'users' in responce_json else []
+                    users = response_json['users'] if 'users' in response_json else []
                     for user in users:
-                        print(user)
+                        logger.info(f"id: {user['pk']} name: {user['username']}")
                         writer.writerow(user)
 
                 scroll += 1
-                print(last_ht, ht)
+                logger.info(f"last hight: {last_ht} hight: {ht} retry: {retry}")
+                if last_ht == ht:
+                    time.sleep(600)
+                    retry = retry + 1
+                else:
+                    retry = 0
+
         f.close()
         logger.info(f"{account_id} 's follower crawl end")
 
@@ -167,13 +176,14 @@ if __name__ == "__main__":
 
     try:
         account_id = args.account_id
+        interval = args.interval
         headless = False if args.disable_headless else True
 
         logger.info(f"{account_id} 's follower crawl")
 
         ic = InstagramCrawler(headless=headless)
         ic.login(USER_ID, PASSWORD)
-        ic.follower_user(account_id)
+        ic.follower_user(account_id, interval)
         ic.driver_quit()
 
     except Exception as e:
