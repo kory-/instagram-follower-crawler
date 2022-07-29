@@ -24,6 +24,7 @@ parser.add_argument("-i", "--interval", type=int, default=5)
 parser.add_argument("-f", "--file")
 parser.add_argument("-m", "--max_id")
 parser.add_argument("-l", "--limit", type=int, default=100)
+parser.add_argument("-mode", default='scroll')
 args = parser.parse_args()
 
 USER_ID = os.getenv('USER_ID')
@@ -276,6 +277,7 @@ if __name__ == "__main__":
         max_id = args.max_id
         limit = args.limit
         file = args.file
+        mode = args.mode
         headless = False if args.disable_headless else True
 
         logger.info(f"{account_id} 's follower crawl")
@@ -283,8 +285,10 @@ if __name__ == "__main__":
         ic = InstagramCrawler(headless=headless)
 
         ic.login(USER_ID, PASSWORD)
-        ic.get_followers_by_api(account_id, interval=interval, limit=limit, max_id=max_id, filename=file)
-        # ic.get_followers_by_scroll(account_id, interval)
+        if 'api' in mode:
+            ic.get_followers_by_api(account_id=account_id, interval=interval, limit=limit, max_id=max_id, filename=file)
+        else:
+            ic.get_followers_by_scroll(account_id=account_id, interval=interval)
         ic.driver_quit()
 
     except Exception as e:
