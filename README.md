@@ -45,6 +45,8 @@ parser.add_argument("-mode", default='scroll')
 
 if 'api' in mode:
     ic.get_followers_by_api(account_id=account_id, interval=interval, limit=limit, max_id=max_id, filename=file)
+elif 'json' in mode:
+    ic.get_followers_by_json(account_id=account_id, interval=interval, limit=limit, max_id=max_id, filename=file)
 else:
     ic.get_followers_by_scroll(account_id=account_id, interval=interval)
 ```
