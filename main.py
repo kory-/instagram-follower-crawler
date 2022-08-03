@@ -325,6 +325,11 @@ class InstagramCrawler:
 
             while next_max_id is not None:
                 users, next_max_id = self.get_users_json(cookies, limit, next_max_id, pk)
+
+                if not next_max_id:
+                    logger.info(f"next_max_id: {next_max_id}")
+                    break
+
                 if len(users) == 0:
                     raise Exception("account rate limit")
 
@@ -362,6 +367,7 @@ class InstagramCrawler:
             cookies=cookies)
         response_json = response.json()
         users = response_json.get('data', {}).get('user', {}).get('edge_followed_by', {}).get('edges', [])
+        next_max_id = False
         if response_json.get('data', {}).get('user', {}).get('edge_followed_by', {}).get('page_info', {}).get('has_next_page', False):
             next_max_id = response_json.get('data').get('user').get('edge_followed_by').get('page_info').get('end_cursor', None)
         return users, next_max_id
