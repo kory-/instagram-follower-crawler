@@ -267,7 +267,7 @@ class InstagramCrawler:
         logger.info(f"{account_id} 's follower crawl end")
 
 
-    def get_followers_by_json(self, account_id, interval=5, limit=100, max_id=None, filename=None):
+    def get_followers_by_json(self, account_id, interval=5, limit=50, max_id=None, filename=None):
 
         resp_url = ''
         logger.info(f"{account_id} 's follower crawl start")
@@ -325,6 +325,9 @@ class InstagramCrawler:
 
             while next_max_id is not None:
                 users, next_max_id = self.get_users_json(cookies, limit, next_max_id, pk)
+                if len(users) == 0:
+                    raise Exception("account rate limit")
+
                 for user in users:
                     _user = user['node']
                     _user['pk'] = _user['id']
