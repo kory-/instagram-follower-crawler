@@ -1,4 +1,4 @@
-# intagram-follower-crawler
+# instagram-follower-crawler
  
 ## Install & Setup
 ```shell
